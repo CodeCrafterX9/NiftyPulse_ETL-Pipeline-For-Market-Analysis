@@ -6,6 +6,8 @@ import json
 import psycopg2
 import pandas as pd
 import numpy as np
+from sqlalchemy import create_engine
+
 
 # THE OBJECTIVE OF THIS DAG IS TO 
 # LOAD DATA FROM NSE WEBSITE DAILY - & STORE IT IN POSTGRES DB
@@ -34,18 +36,76 @@ def extract_data() :
     #note: dag() file ka print() logs mei show hota hai & return() XCom mei show hota hai
     return (df,time_of_request,advances,metadata,market_status)
 
+def load_nifty_data(input_df):
+    engine = create_engine(
+    "postgresql+psycopg2://postgres:postgres@postgres:5432/postgres"
+    )
+    input_df.to_sql(
+    "nifty_data",
+    engine,
+    if_exists="append",
+    index=False
+    )
+
+
+def load_nifty_raw (input_data):
+    """ Load Transformed data into Postgres SQL"""
+        
+    conn = psycopg2.connect(
+        host="postgres",
+        database="postgres",
+        user="postgres",
+        password="postgres",
+        port=5432
+        )
+
+    cursor = conn.cursor()
+    #cursor.execute("SELECT current_database();")
+    #print(cursor.fetchone())
+
+    
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS nifty_raw (
+        name TEXT,
+        timestamp TEXT,
+        advance JSONB,
+        metadata JSONB,
+        market_status JSONB
+        );
+                   """
+            )
+    cursor.execute("""
+                   
+            INSERT INTO nifty_raw (name, timestamp, advance, metadata, market_status)
+            VALUES (%s,%s,%s,%s,%s)
+            """, (
+                input_data['name'],
+                input_data['timestamp'],
+                json.dumps(input_data['advance']),
+                json.dumps(input_data['metadata']),
+                json.dumps(input_data['marketStatus'])
+                )
+
+            )
+    
+    conn.commit()
+    cursor.close()
+    return "nifty 50 data input done"
+
 def transform_data(output):
     df,time_of_request,advances,metadata,market_status=output
-    nifty50 = pd.DataFrame({
+    nifty50 = {
     'name': "NIFTY 50",
     'advance': advances,
     'timestamp': time_of_request,
     'metadata': metadata,
     'marketStatus': market_status
-    })
+    }
     
     df= pd.DataFrame(df)
     nifty_data=df[df["symbol"]=="NIFTY 50"]
+    nifty_data.drop(columns=["priority",'series', 'meta','chartTodayPath','chart30dPath','chart365dPath','identifier'],
+           inplace=True)
     #print(nifty_data)
     stocks_data=df[df["symbol"]!="NIFTY 50"]
     #stocks_data.head()
@@ -54,7 +114,11 @@ def transform_data(output):
     #meta_df.head()
     stocks_data=stocks_data.drop(columns=["meta"])
 
-    return nifty_data , stocks_data , meta_df , stocks_data
+    #return load_nifty_raw(nifty50)
+    return load_nifty_data(nifty_data)
+
+
+
 
 default_args = {'owner':'airflow','start_date':datetime(2026,1,1)}
 
@@ -71,5 +135,6 @@ with DAG (dag_id="nse_stocks_etl",
     def transform(output):
         return transform_data(output)
     
+
     output=extract()
     transform(output)
