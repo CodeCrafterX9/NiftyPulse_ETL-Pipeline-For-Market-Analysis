@@ -46,7 +46,31 @@ def load_nifty_data(input_df):
     if_exists="append",
     index=False
     )
+    return "nifty_data input"
 
+def load_stocks_data(input_df):
+    engine = create_engine(
+    "postgresql+psycopg2://postgres:postgres@postgres:5432/postgres"
+    )
+    input_df.to_sql(
+    "stocks_data",
+    engine,
+    if_exists="append",
+    index=False
+    )
+    return "stocks_data input"
+
+def load_meta_data(input_df):
+    engine = create_engine(
+    "postgresql+psycopg2://postgres:postgres@postgres:5432/postgres"
+    )
+    input_df.to_sql(
+    "meta_data",
+    engine,
+    if_exists="append",
+    index=False
+    )
+    return "meta_data input"
 
 def load_nifty_raw (input_data):
     """ Load Transformed data into Postgres SQL"""
@@ -85,7 +109,6 @@ def load_nifty_raw (input_data):
                 json.dumps(input_data['metadata']),
                 json.dumps(input_data['marketStatus'])
                 )
-
             )
     
     conn.commit()
@@ -113,12 +136,15 @@ def transform_data(output):
     meta_df = pd.json_normalize(meta_df)
     #meta_df.head()
     stocks_data=stocks_data.drop(columns=["meta"])
-
-    #return load_nifty_raw(nifty50)
-    return load_nifty_data(nifty_data)
-
-
-
+    stocks_data["ingested_at"] = pd.Timestamp.now()
+    nifty_data["ingested_at"] = pd.Timestamp.now()
+    meta_df["ingested_at"] = pd.Timestamp.now()
+    stocks_data.drop(columns=["priority",'chartTodayPath','chart30dPath','chart365dPath','series'],inplace=True)
+    load_nifty_raw(nifty50)
+    load_nifty_data(nifty_data)
+    load_stocks_data(stocks_data)
+    load_meta_data(meta_df)
+    
 
 default_args = {'owner':'airflow','start_date':datetime(2026,1,1)}
 
